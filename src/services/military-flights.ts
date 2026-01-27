@@ -2,6 +2,7 @@ import type { MilitaryFlight, MilitaryFlightCluster, MilitaryAircraftType, Milit
 import { createCircuitBreaker } from '@/utils';
 import {
   identifyByCallsign,
+  identifyByAircraftType,
   isKnownMilitaryHex,
   getNearbyHotspot,
   MILITARY_HOTSPOTS,
@@ -72,7 +73,7 @@ interface OpenSkyResponse {
 function determineAircraftInfo(
   callsign: string,
   icao24: string,
-  _typeCode?: string
+  typeCode?: string
 ): { type: MilitaryAircraftType; operator: MilitaryOperator; country: string; confidence: 'high' | 'medium' | 'low' } {
   // Check callsign first (highest confidence)
   const callsignMatch = identifyByCallsign(callsign);
@@ -94,6 +95,18 @@ function determineAircraftInfo(
       country: hexMatch.country,
       confidence: 'medium',
     };
+  }
+
+  if (typeCode) {
+    const typeMatch = identifyByAircraftType(typeCode);
+    if (typeMatch) {
+      return {
+        type: typeMatch.type,
+        operator: 'other',
+        country: 'Unknown',
+        confidence: 'low',
+      };
+    }
   }
 
   // Default for unknown military
@@ -372,6 +385,17 @@ async function enrichFlightsWithWingbits(flights: MilitaryFlight[]): Promise<Mil
         enrichedFlight.isInteresting = true;
         if (!enrichedFlight.note) {
           enrichedFlight.note = `${analysis.militaryBranch}${analysis.owner ? ` - ${analysis.owner}` : ''}`;
+        }
+      }
+    }
+
+    const aircraftType = analysis.typecode || details.typecode;
+    if (aircraftType) {
+      const typeMatch = identifyByAircraftType(aircraftType);
+      if (typeMatch) {
+        enrichedFlight.aircraftType = typeMatch.type;
+        if (enrichedFlight.confidence === 'low') {
+          enrichedFlight.confidence = 'medium';
         }
       }
     }
